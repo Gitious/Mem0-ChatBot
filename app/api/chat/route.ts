@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     if (typeof memories === 'string') {
       try {
         parsedMemories = JSON.parse(memories);
-      } catch (error) {
+      } catch {
         parsedMemories = memories;
       }
     } else {
