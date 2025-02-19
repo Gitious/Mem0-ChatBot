@@ -2,8 +2,13 @@
 'use client';
 import { useState } from 'react';
 
+interface Message {
+  role: string;
+  content: string;
+}
+
 export default function ChatPage() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   // You can hardcode a userId or add a login mechanism later
