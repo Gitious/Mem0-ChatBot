@@ -1,20 +1,13 @@
-// app/api/chat/route.js
+// app/api/chat/route.ts
 import { NextResponse } from 'next/server';
-import { createMem0, addMemories, retrieveMemories } from '@mem0/vercel-ai-provider';
+import { addMemories, retrieveMemories } from '@mem0/vercel-ai-provider';
 import { OpenAI } from 'openai';
-
-// Initialize mem0 provider using environment variables
-const mem0 = createMem0({
-  provider: 'openai',
-  mem0ApiKey: process.env.MEM0_API_KEY,
-  apiKey: process.env.OPENAI_API_KEY,
-  config: { compatibility: 'strict' },
-});
+import type { NextRequest } from 'next/server';
 
 // Initialize OpenAI client
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export async function POST(req) {
+export async function POST(req: NextRequest) {
   try {
     const { userId, message } = await req.json();
 
@@ -30,13 +23,28 @@ export async function POST(req) {
 
     // Retrieve previous memories for this user (to build context)
     const memories = await retrieveMemories(message, { user_id: userId });
-    console.log('Retrieved memories:', memories); 
+    console.log('Retrieved memories:', memories);
+
+    // Attempt to parse memories if it's JSON; otherwise use as plain text
+    let parsedMemories;
+    if (typeof memories === 'string') {
+      try {
+        parsedMemories = JSON.parse(memories);
+      } catch (error) {
+        parsedMemories = memories;
+      }
+    } else {
+      parsedMemories = memories;
+    }
 
     let context = '';
-    if (memories.results && memories.results.length > 0) {
-      context = memories.results
-         .map(mem => "- " + mem.memory.trim())
+    if (parsedMemories && typeof parsedMemories === 'object' && parsedMemories.results && parsedMemories.results.length > 0) {
+      context = parsedMemories.results
+         .map((mem: { memory: string }) => "- " + mem.memory.trim())
          .join("\n");
+    } else if (typeof parsedMemories === 'string') {
+      // if it's plain text, use it directly
+      context = parsedMemories;
     }
 
     // Build a system prompt using the formatted user details
@@ -45,8 +53,8 @@ ${context}
 When answering the user's questions, see if there exists in the memory or context that will help you answer the question. If there is, use only these details and never mention that you lack access.`;
     
     const messagesForResponse = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: message }
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: message }
     ];
 
     // Call OpenAI with the properly structured messages
@@ -58,7 +66,11 @@ When answering the user's questions, see if there exists in the memory or contex
     const responseMessage = completion.choices[0].message.content || '';
 
     // Save the assistant's response using the imported helper function
-    await addMemories([{ role: 'assistant', content: responseMessage }], { user_id: userId });
+    // Wrap the string response in an array of text parts
+    await addMemories(
+      [{ role: 'assistant', content: [{ type: 'text', text: responseMessage }] }],
+      { user_id: userId }
+    );
 
     return NextResponse.json({ response: responseMessage });
   } catch (error) {
